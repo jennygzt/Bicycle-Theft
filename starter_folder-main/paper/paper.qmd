@@ -1,0 +1,265 @@
+---
+title: "Trends and Patterns in Bicycle Thefts: A Temporal Analysis of Incident Data"
+author: 
+  Zitong Guo 
+thanks: "A GitHub Repository containing all data, R code, and other files used in this investigation is located here: <https://github.com/jennygzt/Bicycle-Theft-.git>"
+date: "September 25, 2024"
+date-format: long
+abstract: "This paper investigates patterns of bicycle thefts and recoveries using incident report data from multiple years. By analyzing temporal trends, offense types, and bicycle characteristics, significant fluctuations in theft rates were observed over time, with certain months experiencing higher incidents. Additionally, certain types of bicycles, such as mountain and road bikes, were more frequently stolen, while higher-cost bicycles had a slightly higher recovery rate. Understanding these trends is crucial for improving theft prevention strategies and informing both policy and law enforcement efforts aimed at reducing bike-related crimes."
+format: pdf
+number-sections: true
+# The toc parameter used to create a table of contents was obtained from
+# Quarto documentation:
+# https://quarto.org/docs/reference/formats/pdf.html
+toc: true 
+bibliography: references.bib
+---
+
+```{r}
+#| echo: false
+#| warning: false
+#### Preamble ####
+
+# Purpose: Generates a paper titled "Trends and Patterns
+# in Bicycle Thefts: A Temporal Analysis of Incident Data" in PDF form when
+# rendered
+# Author: Zitong Guo
+# Date: September 24, 2024
+# Contact: jennygztong@gmail.com
+# Pre-requisites: Run the files "00_simulate_date.R" and "01_download_data.R".
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#### Loading Packages ####
+library(tidyverse)
+library(here)
+library(opendatatoronto)
+library(knitr)
+library(tidyverse)
+```
+
+
+# Introduction {#sec-introduction}
+
+Bicycle theft remains a significant issue in urban environments, causing financial strain, personal frustration, and discouraging the use of bicycles as a mode of sustainable transportation. Despite improvements in security measures and heightened public awareness, bicycles continue to be vulnerable to theft. Understanding the factors influencing theft rates such as the timing, location, and types of bicycles stolen can provide crucial insights into preventing such crimes. Furthermore, the low recovery rates of stolen bicycles raise critical questions about how characteristics like bike cost and type impact the likelihood of recovery. Addressing these factors is essential for developing more effective crime prevention strategies and improving recovery efforts.
+
+This paper seeks to bridge the gap in understanding temporal and spatial patterns of bicycle theft and recovery by analyzing detailed incident data over several years. We investigate theft trends over time, focusing on variations by month and specific bicycle types. Additionally, exploring whether the cost of the bicycle influences recovery rates and whether certain bike characteristics affect the likelihood of recovery. 
+
+The findings in this paper reveal notable trends, including a seasonal peak in thefts during the summer months, with mountain and road bikes being the most frequently targeted. It is also observed that higher-cost bicycles show a slightly increased recovery rate, but overall recovery rates remain low. These insights are critical in addressing the challenges of bicycle theft and formulating evidence-based recommendations. 
+
+The remainder of this paper is structured as follows. In @sec-data, the paper focuses on describing the dataset and outlining the methodology for analyzing theft and recovery patterns. In @sec-results, key observations and findings are analyzed, including temporal trends, bicycle-specific data, and recovery outcomes. Finally, in @sec-discussion, further examination on the implications of these findings and providing recommendations for policymakers, law enforcement, and bicycle owners to help mitigate bicycle theft and enhance recovery efforts. 
+
+
+# Data {#sec-data}
+
+## Raw Data and Cleaning {#sec-cleaning}
+The data used in this analysis is sourced from publicly available datasets on reported bicycle thefts in Toronto, obtained from the City of Toronto's Open Data Portal [@opendatatoronto]. The datasets include detailed incident reports of bicycle thefts across various neighbourhoods, spanning multiple years. The key variables in the dataset include the date and the time of theft, the location of the incident, the type of bike stolen, and the recovery status when available. 
+
+The `R` programming language [@citeR] and `tidyverse` [@tidyverse] packages were used to simulate the dataset and generate tests for it. The `opendatatoronto` [@opendatatoronto] and `tidyverse` [@tidyverse] packages were then applied to download the raw Toronto Bicycle theft dataset. Next, the `tidyverse` package [@tidyverse], janitor [@janitor], ggplot2 [@ggplot2], here [@here], and knitr [@knitr] were used to clean the raw dataset and test the raw as well as the cleaned dataset.  The data cleaning process involved filtering specific columns from the raw dataset and renaming certain entries for clarity and simplicity. In this analysis, the missing values are not removed as they are crucial for ensuring the integrity and preserving sample size.
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#### Loading the Dataset ####
+data <- read_csv(here::here(
+  "/home/rstudio/starter_folder-main-3/data/raw_data.csv"
+))
+```
+
+```{r}
+#| label: tbl-data
+#| tbl-cap: Sample of raw data
+#| echo: false
+
+# Clean and align the STATUS column
+data$STATUS <- toupper(trimws(data$STATUS)) # Standardize and remove whitespace
+
+# Display the table with improved alignment
+tail(data %>% select(OCC_DATE, LOCATION_TYPE, BIKE_COST, STATUS), 8) |>
+  knitr::kable(
+    col.names = c("Occurrence Date", "Location Type", "Bike Cost", "Status"),
+    booktabs = TRUE,
+    align = c("l", "l", "r", "c") # Aligns columns appropriately
+  )
+```
+@tbl-data provides a snapshot of the cleaned data, showcasing key variables like Occurrence Date, Location Type, Bike Cost, and Status, which are central to the analysis. It helps to understand the structure and quality of the dataset. The table sets the context for further analysis, supporting discussions on theft patterns, trends, and the financial impact of stolen bicycles. 
+
+The dataset is published by the Toronto Police Service [@opendatatoronto], documenting bicycle theft incidents reported across the city. It provides detailed information about each theft incident, including the location where the bicycle was stolen (categorized as "Apartment/Condo," "Street/Highway," "Commercial," etc.), the estimated value of the stolen bicycle (in Canadian dollars), and whether the bicycle was recovered or remains stolen. The data is continuously updated, and the version used in this paper is current as of September 25, 2024.
+
+The raw dataset contains 36,000 theft records, each capturing critical information such as the occurrence date, type of location, and the estimated bike cost. This dataset offers a comprehensive view of the prevalence and nature of bicycle thefts throughout Toronto, allowing for an analysis of patterns over time and across different parts of the city.
+
+## Dataset and Graph Sketches {#sec-sketches}
+
+Sketches depicting both the desired dataset and the graphs generated in this analysis are available in the GitHub Repository.
+
+
+\newpage
+
+# Results {#sec-results}
+## Analysis of the Yearly Distribution of Bike Thefts Over Time ##
+```{r} 
+#| echo: false
+#| warning: false
+#| label: fig-bike-theft-over-time
+#| fig-cap: Yearly Distribution of Bike Thefts Over Time
+
+library(ggplot2)
+library(dplyr)
+
+# Prepare data by aggregating thefts by month
+theft_data <- data %>%
+  filter(PRIMARY_OFFENCE == "THEFT UNDER") %>%
+  mutate(Month = as.Date(format(as.Date(OCC_DATE, "%Y-%m-%d"), "%Y-%m-01"))) %>%
+  group_by(Month) %>%
+  summarise(Count = n())
+
+# Create the line plot with fewer x-axis labels
+ggplot(theft_data, aes(x = Month, y = Count)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "blue", size = 2) +
+  labs(x = "Date", y = "Number of Thefts") +
+  theme_minimal() +
+  scale_x_date(date_labels = "%Y-%m", date_breaks = "1 year") +
+  # Show only one label per year
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # Rotate labels for readability
+  expand_limits(y = 0)
+```
+@fig-bike-theft-over-time illustrates the Yearly Distribution of Bike Thefts Over Time in Toronto. The x-axis shows the date of theft and the y-axis shows the number of thefts, allowing for an analysis of temporal patterns.
+
+The line graph shows a sharp rise in bike thefts starting from around 2014 with a noticeable peak, where the number of thefts reached nearly 500 in a given month. This spike may have been influenced by factors such as increased bike usage and possible vulnerabilities in bike security systems during that period [@johnson2008bicycle]. Following this peak, thefts appear to gradually decline, although there are fluctuations. The drop observed during the pandemic aligns with findings that large-scale disruptions in mobility and economic activities lead to changes in crime patterns, including property crimes like bike theft [@nishisako2024predicting]. 
+
+Although the theft rate began to recover post-2020, it remained lower than the peak before the pandemic. This could be a suggestion of lasting effects of altered commuting patterns and security issues. Studies have indicated that disruptions like the pandemic can have lasting impacts on urban mobility and security strategies [@mburu2016environmental]. By 2024, the number of bike thefts drop significantly compared to earlier peaks.
+
+\newpage
+
+## Analysis of the Distribution of Theft Incidents by Location Type ##
+```{r}
+#| label: fig-location
+#| fig-cap: Top 10 Theft Incidents by Location Type
+#| echo: false
+#| fig-width: 12  # Adjust the width of the figure
+#| fig-height: 6  # Adjust the height of the figure
+
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+
+# Calculate the number of incidents for each LOCATION_TYPE and select the top 10
+top_10_locations <- data %>%
+  filter(!is.na(LOCATION_TYPE)) %>%
+  count(LOCATION_TYPE, sort = TRUE) %>%
+  top_n(10, wt = n) # Select the top 10 locations based on frequency
+
+# Create a new column with shorter names for the location types
+top_10_locations <- top_10_locations %>%
+  mutate(Short_Location = recode(LOCATION_TYPE,
+    "Apartment (Rooming House, Condo)" = "Apt/Condo",
+    "Streets, Roads, Highways (Bicycle Path, Private Road)" = "Streets/Highways",
+    "Single Home, House (Attach Garage, Cottage, Mobile)" = "Single Home",
+    "Parking Lots (Commercial, Non-Commercial)" = "Parking Lot",
+    "Private Property Structure (Pool, Shed, Garage)" = "Private Structure",
+    "Commercial Areas" = "Commercial",
+    "Bar / Restaurant" = "Bar/Restaurant",
+    "Universities / Colleges" = "Univ/Colleges",
+    "Open Areas (Lakes, Parks, Rivers)" = "Open Areas",
+    "Other Commercial / Corporate Places (For Profit, Warehouses)"
+    = "Other Commercial"
+  ))
+
+# Create the bar plot for the top 10 locations with shortened x-axis labels
+ggplot(top_10_locations, aes(x = reorder(Short_Location, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "lightcoral") +
+  labs(x = "Location Type", y = "Frequency") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10))
+# Rotate x-axis labels for readability
+```
+@fig-location is a bar graph that illustrates the distribution of bicycle theft incidents by location type (x-axis), with the frequency of thefts (y-axis) across different categories. 
+
+The data reveals that apartments or condos have the highest frequency of thefts, aligning with the findings in the book Bicycle Theft [@johnson2008bicycle], which highlighted that residential areas with minimal security such as outdoor spaces are common targets for theft.
+
+Streets and highways rank second in theft frequency, a pattern consistent with an article based on environmental risk factors influencing bicycle theft [@mburu2016environmental], which identified public areas as hotspots for theft due to their open nature and lack of surveillance. Noticeably, universities or colleges and commercial places show lower theft rates, likely due to better infrastructure like bike racks and surveillance, which is supported by the article on designing against bike theft [@thorpe2012designing] that stressed the importance of secure urban design in reducing theft.
+
+\newpage
+
+## Analysis of the Relationship Between Bike Cost and Theft or Recovery Status ##
+```{r}
+#| label: fig-bike-cost-and-theft-rate
+#| fig-cap: Bike Cost vs Theft Rate (Filtered Data)
+#| echo: false
+# Plot 3
+# Filter the data to include only rows with bike cost
+# information and non-missing STATUS
+data_filtered <- data %>%
+  filter(!is.na(BIKE_COST) & !is.na(STATUS))
+
+# Create a histogram to compare the cost of bikes based on their theft status
+# Filter the data to remove extreme outliers (e.g., bikes that cost more than
+# a certain threshold)
+data_filtered <- data_filtered %>%
+  filter(BIKE_COST < 10000) # Adjust the threshold as necessary
+
+# Create the histogram again
+ggplot(data_filtered, aes(x = BIKE_COST, fill = STATUS)) +
+  geom_histogram(binwidth = 500, position = "dodge", alpha = 0.7) +
+  scale_fill_manual(values = c("STOLEN" = "red", "RECOVERED" = "blue")) +
+  xlab("Bike Cost (in currency)") +
+  ylab("Count") +
+  theme_minimal()
+```
+@fig-bike-cost-and-theft-rate shows the relationship between bike cost and theft rate, distinguishing between stolen and recovered bicycles. The x-axis shows the cost of bikes at different price levels and the y-axis shows the number of bikes been stolen. Moreover, the areas shaded in red are bikes that have been stolen and never recovered, and the area shaded in blue, which is hard to see, is the number of bikes that have been recovered.
+
+The majority of the thefts occur with bikes valued at lower price points, typically below $2500. This observation is consistent with research by @johnson2008bicycle, which highlights that low-cost bicycles are often targeted due to their high availability and lower security measures. In addition, referring to (@van2015breaking), it was noted that inexpensive bikes are frequently stolen in urban areas where they are parked in unsecured areas.
+
+Interestingly, the graph shows that the recovery rates for stolen bikes are very low across all price ranges, as highlighted by the small count of recovered bikes. This reflects findings from the concentration of crime at places in Montreal and Toronto [@boivin2019concentration], which discussed the difficulties in recovering stolen property, particularly bicycles, which are often resold or dismantled quickly. In contrast, higher-value bikes, bikes priced over $2500 are less likely to be stolen, likely because owners invest in better security measures as suggested by the article on designing against bicycle theft [@thorpe2012designing].
+
+
+\newpage
+
+# Discussion {#sec-discussion}
+
+## Data Selection ##
+The data for this study was obtained from Open Data Toronto [@opendatatoronto] and include variables essential for analyzing bicycle theft patterns: Occurrence Date, Location Type, Bike Cost, and Status. These variables were selected based on their relevance to understanding the temporal and spatial aspects of theft, as well as the financial impact and recovery rates.
+
+Occurrence Date was chosen to examine trends in thefts over time, such as seasonal spikes during warmer months, which is consistent with findings by Van Lierop et al [@van2015breaking]. Location Type provides spatial insights, helping to identify high-risk areas like public streets and commercial zones [@charron2009neighbourhood]. Bike Cost offers a view into the financial consequences of theft, while Status helps assess the effectiveness of recovery efforts [@boivin2019concentration].
+
+Data from 2010 to 2024 were selected to ensure consistency and capture recent trends, while records with missing or incomplete entries, especially in Occurrence Date or Location Type, were excluded. This ensures the analysis focuses on well-documented incidents. Outliers in Bike Cost were also reviewed to avoid skewed results from extreme values.
+
+\newpage
+
+## General Analysis and Empirical Evidences ##
+
+The three graphs—Yearly Distribution of Bike Thefts Over Time (@fig-bike-theft-over-time), Top 10 Theft Incidents by Location Type (@fig-location), and Bike Cost vs Theft Rate Using Filtered Data (@fig-bike-cost-and-theft-rate)-revealing important connections between time, location, and bike value in theft patterns. Together, they provide a broader understanding of how these factors influence bike theft risk.
+
+ @fig-bike-theft-over-time shows that bike thefts peak in the summer when bikes are more frequently used and left in public places, which is supported by the second graph, @fig-location, showing that streets, roads, and apartments are high-risk locations for thefts. This suggests that both the seasonality and visibility of bikes in these areas play a major role in theft frequency. @fig-bike-cost-and-theft-rate, showing that lower-cost bikes are stolen more often but higher-cost bikes are more likely to be recovered, adds an economic dimension to this pattern. This implies that bike value influences both theft targeting and recovery efforts, likely due to better security measures for expensive bikes.
+
+The findings from this study have significant implications for policy interventions aimed at reducing bicycle theft. One key area is expanding secure bike parking facilities in high-theft areas like streets and commercial zones. Previous research has highlighted the importance of urban design in crime prevention, particularly in ensuring that public spaces are well-lit and equipped with secure bike storage [@nettle2012cycle]. By implementing more secure bike parking in these high-risk locations, cities can help deter theft and reduce the overall incidence of bicycle theft.
+
+In addition to improving infrastructure, targeted theft prevention efforts during peak months are essential. As the data shows a seasonal trend in bicycle thefts, increasing public awareness and law enforcement patrols during the warmer months can be an effective deterrent. These interventions could help reduce the vulnerability of cyclists during the times of year when thefts are most common.
+
+The low recovery rates for stolen bicycles, as indicated by the Status variable, suggest a need for improved recovery systems. More comprehensive bike registration programs, where bicycle owners can register identifying details, would make it easier to track and recover stolen property. This approach is supported by findings in broader crime recovery research, where stronger identification measures have been linked to higher recovery rates [@charron2009neighbourhood]. Additionally, enhancing community engagement in reporting stolen bicycles and improving coordination between law enforcement and local communities could also increase recovery rates.
+
+Finally, it is essential to consider the broader social and environmental factors that influence theft. Research has shown that certain environmental conditions, such as high-traffic areas with low natural surveillance, can create opportunities for crime [@linden2005need]. Urban planners should account for these risk factors in designing safer public spaces and integrating crime prevention into urban development strategies.
+
+\newpage
+
+## Limitations and Next Steps ##
+This study, while providing valuable insights into bicycle theft patterns in Toronto, has several limitations. Firstly, it relies on a dataset containing bicycle theft occurrences from 2014 to 2020. A significant limitation is the deliberate offsetting of crime location data to the nearest road intersection node. This was done to protect the privacy of individuals involved in the incidents, but it introduces a level of uncertainty regarding the exact locations of thefts. As a result, the reported counts of occurrences by Division and Neighbourhood may not accurately reflect the true distribution of bicycle thefts within these areas. Consequently, the Toronto Police Service does not guarantee the accuracy, completeness, or timeliness of the data, and it should not be compared to other crime data sources.
+
+Another limitation stems from the dataset's time frame, which may not capture recent trends, particularly in light of the impact of the COVID-19 pandemic on cycling behavior and theft rates. The focus on a specific period may overlook shifts in crime patterns and the effectiveness of recent prevention measures, referring to the article focusing on the need for comprehensive crime prevention planning [@canadianjournalofcriminology].
+
+Finally, the study is confined to Toronto, limiting the generalization of the findings. Theft patterns and effective prevention strategies may vary significantly in different urban contexts, depending on factors such as infrastructure, crime rates, and socio-economic conditions.
+
+To address these limitations, future research should consider incorporating additional datasets that include unreported bicycle theft incidents. This could help provide a more comprehensive view of the extent of the problem. Additionally, researchers could explore alternative methods for reporting theft occurrences that do not compromise privacy while still providing more precise geographical data.
+
+Expanding the analysis to include more recent data beyond 2020 would also be beneficial, especially given the changes in cycling patterns during and after the pandemic. A longitudinal study could examine how theft rates have evolved in response to shifting urban dynamics, infrastructure changes, and community safety initiatives.
+
+
+\newpage
+
+# References {#sec-references}
+
+
